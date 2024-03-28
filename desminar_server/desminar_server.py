@@ -149,7 +149,7 @@ class Spider:
 
 
 # come parameters
-tresh_detect = 110
+tresh_detect = 64
 thesh_track = 110
 alpha = 1.5 # Contrast control (1.0-3.0)
 beta = 0 # Brightness control (0-100)
@@ -157,9 +157,9 @@ fn_index = 0
 basename = "more_cartels/TLATELOLCO_/detection/TLS26_cap"
 # load stream from file
 
-#cap = cv2.VideoCapture("/Users/microhm/Desktop/01_Proyectos/Tania_Candiani/desminar-2/TLATELOLCO_/v4_p.mp4")
-cap = cv2.VideoCapture("/Users/microhm/Desktop/01_Proyectos/Tania_Candiani/desminar-2/FRAGMENTOS_DLC/NINJAV_S001_S001_T001.mp4")
-#cap = cv2.VideoCapture(1)
+#cap = cv2.VideoCapture("D:/SK/PY/desminar/TLTL/tltl_process.mp4")
+cap = cv2.VideoCapture("D:/SK/PY/desminar/more_cartels/TLATELOLCO_/v1.mov")
+#cap = cv2.VideoCapture("C:/Users/tania/Documents/desminar/FRAGMENTOS DIC/NINJAV_S001_S001_T005_2x4x.mp4")
 # stream from webcam or capture device
 #cap = cv2.VideoCapture(2, cv2.CAP_DSHOW) # this is the magic!
 #cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) # this is the magic!
@@ -266,7 +266,7 @@ while(cap.isOpened()):
             #contour detection
             trackable_blur = cv2.GaussianBlur(buff_grays[-2], (5,5), 0)
             trackable_blur = cv2.convertScaleAbs(trackable_blur, alpha=alpha, beta=beta)
-            ret, trackable_cthresh = cv2.threshold(trackable_blur, thesh_track, 255, 0)
+            ret, trackable_cthresh = cv2.threshold(trackable_blur, thesh_track, 255, 1)
             contours, hierarchy = cv2.findContours(trackable_cthresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)     # -mode 1, detection on current image 
             #contours, hierarchy = cv2.findContours(delta_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)    # -mode2, detection on difference
             contours = sorted(contours, key=cv2.contourArea, reverse=True)
