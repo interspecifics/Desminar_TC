@@ -8,28 +8,41 @@ desminar server tracks the activity of regions of interest in an image stream
 follow the coordinates, measures, area and velocity and sends it via osc
 
 
-a-version
----------
--spider tracker
--able to receive stream from iruin webstream server
--send osc
--base colors
+d-version
+-switching modes:
+on movement, cam analysis
+on pause, playing video 
 
-b-version
----------
--red/blue/white color scheme
--tune detection, borders and text
+e-version
+-switching modes:
+on movement, cam analysis
+on pause, video analysis , but cam movement detection
 
-c-redux
----------
--remove unnecesary code
--sync version
--delay in detection compensation w/ 1-2 frames 
+event                           operation           osc msj
+--------------------------------------------------------------
+movement on camera              stop state 0        /state/0 0
+                                start state 1       /state/1 1
+
+30 secs w/o movement on cam     stop state 1        /state/1 0
+                                start state 0       /state/0 1
+
+
+-detect changes in veloc
+
+event                           operation           osc msj
+--------------------------------------------------------------
+update level of movement        update veloc        /vel/0 1 
+                                update veloc        /vel/1 1
+                                update veloc        /vel/2 1
+                                update veloc        /vel/3 1
+                                update veloc        /vel/4 1
+
 """
 
 
 import cv2
 import numpy as np 
+import time, math
 from oscpy.client import OSCClient
 
 char_list = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -56,6 +69,11 @@ class Spider:
         self.OSC_HOST = "127.0.0.1"
         self.OSC_PORT = 9001
         self.OSC_CLIENT = OSCClient(self.OSC_HOST, self.OSC_PORT)
+
+        self.state = 0
+        self.past_state = 0
+        self.veloc = 0
+        self.past_veloc = 0
 
 
     def update(self):
@@ -90,7 +108,18 @@ class Spider:
         # 4. send osc
         if (self.t%2==0):
             self.send_osc()
-                    
+
+    def update_state(self, numo):
+        self.past_state = self.state
+        self.state = numo
+        if (self.past_state != self.state):
+            self.send_switch_state()
+
+    def update_veloc(self, nuvl):
+        self.past_veloc = self.veloc
+        self.veloc = nuvl
+        if (self.past_veloc != self.veloc):
+            self.send_switch_veloc()
 
     def charge_list(self, rectlist):
         """
@@ -113,6 +142,26 @@ class Spider:
                 #print(ruta + "\t{}\t{}\t{}\t{}\t{}\t{}\t{:0.2f}\t{:0.2f}".format(the_set))
             except:
                 print("\t ---- \t---- \t---- \t----")
+
+    def send_switch_state(self):
+        try:
+            ##print(ruta,'\t',act_set)
+            ruta_pst = '/state/{}'.format(self.past_state)
+            self.OSC_CLIENT.send_message(ruta_pst.encode('utf-8'), [0])
+            ruta_st = '/state/{}'.format(self.state)
+            self.OSC_CLIENT.send_message(ruta_st.encode('utf-8'), [1])
+        except:
+            print("\t ---- \t---- \t---- \t----")
+
+    def send_switch_veloc(self):
+        try:
+            ##print(ruta,'\t',act_set)
+            #ruta_pv = '/vel/{}'.format(self.past_veloc)
+            #self.OSC_CLIENT.send_message(ruta_pv.encode('utf-8'), [0])
+            ruta_v = '/vel/{}'.format(self.veloc)
+            self.OSC_CLIENT.send_message(ruta_v.encode('utf-8'), [1])
+        except:
+            print("\t ---- \t---- \t---- \t----")
 
 
     def draw(self, frame):
@@ -154,49 +203,57 @@ thesh_track = 110
 alpha = 1.5 # Contrast control (1.0-3.0)
 beta = 0 # Brightness control (0-100)
 fn_index = 0
-basename = "more_cartels/TLATELOLCO_/detection/TLS26_cap"
+basename = "more_cartels/TLATELOLCO_/detection/TLS26_cam"
+t_stop = 10
 # load stream from file
 
-#cap = cv2.VideoCapture("D:/SK/PY/desminar/TLTL/tltl_process.mp4")
-cap = cv2.VideoCapture("D:/SK/PY/desminar/more_cartels/TLATELOLCO_/v1.mov")
-#cap = cv2.VideoCapture("C:/Users/tania/Documents/desminar/FRAGMENTOS DIC/NINJAV_S001_S001_T005_2x4x.mp4")
+#cam = cv2.VideoCapture("D:/SK/PY/desminar/TLTL/tltl_process.mp4")
+vid = cv2.VideoCapture("D:/SK/PY/desminar/more_cartels/TLATELOLCO_/v1.mov")
+#cam = cv2.VideoCapture("C:/Users/tania/Documents/desminar/FRAGMENTOS DIC/NINJAV_S001_S001_T005_2x4x.mp4")
 # stream from webcam or capture device
-#cap = cv2.VideoCapture(2, cv2.CAP_DSHOW) # this is the magic!
-#cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) # this is the magic!
+cam = cv2.VideoCapture(1, cv2.CAP_DSHOW) # this is the magic!
+#cam = cv2.VideoCapture(0, cv2.CAP_DSHOW) # this is the magic!
 # direct from stream
-#cap = cv2.VideoCapture(1)
+#cam = cv2.VideoCapture(1)
 # set dimentions
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+current_frame = []
+secon_frame = []
+t0 = time.time()
+t1 = time.time()
+mode = 0
+auxcon = 0
 
 # title for the window and fullscreen properties
-cv2.namedWindow("D.E.S.M.I.N.A.R.", cv2.WND_PROP_FULLSCREEN)
-cv2.setWindowProperty("D.E.S.M.I.N.A.R.", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+cv2.namedWindow("_D_E_S_M_I_N_A_R_", cv2.WND_PROP_FULLSCREEN)
+cv2.setWindowProperty("_D_E_S_M_I_N_A_R_", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-"""
-# preload a frame
-ret, current_frame = cap.read()
-current_frame_gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
-# create a mask, apply
-mask = np.zeros_like(current_frame_gray)
-#current_frame = cv2.bitwise_and(current_frame, current_frame, mask=mask)
-# create prev frame
-previous_frame = current_frame.copy()
-previous_frame_gray = cv2.cvtColor(previous_frame, cv2.COLOR_BGR2GRAY)
-"""
 
 # preload the buffer of frames
 buff_frames = []
 buff_grays = []
+secon_frames = []
+secon_grays = []
+
 for i in range(3):
-    ret, c_fr = cap.read()
+    #for cam
+    ret, c_fr = cam.read()
     c_fr_gray = cv2.cvtColor(c_fr, cv2.COLOR_BGR2GRAY)
     buff_frames.append(c_fr)
     buff_grays.append(c_fr_gray)
+    # for video
+    retv, c_vfr = vid.read()
+    c_vfr_gray = cv2.cvtColor(c_vfr, cv2.COLOR_BGR2GRAY)
+    secon_frames.append(c_vfr)
+    secon_grays.append(c_vfr_gray)
+    
 
 # set a reference frame
 ref_frame = buff_frames[-1].copy()
 ref_gray = buff_grays[-1].copy()
+ref_secon = secon_frames[-1].copy()
+ref_secon_gray = secon_grays[-1].copy()
 
 #create the mask
 mask = np.zeros_like(buff_grays[-1])
@@ -204,117 +261,167 @@ mask = np.zeros_like(buff_grays[-1])
 # trakker object
 spidr = Spider()
 
+
+
+
+
 # then loop
-while(cap.isOpened()): 
-    # get new frame
-    ret, current_frame = cap.read()
-    if not ret:
-        print("restarting video")
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        continue
+while(cam.isOpened() and vid.isOpened()): 
+    """
+    from here, 
+    t_0 frame -> buff_frames[0]     current
+    t_-1 frame -> buff_frames[1]    past
+    t_-2 frame -> buff_frames[2]    past past
+    """
+    if mode > 0:
+        # get only camera, normal assignation
+        ret, current_frame = cam.read()
+        if not ret:
+            print("restarting camera")
+            continue
+        else:
+            # update buffers
+            buff_frames.append(current_frame)
+            buff_frames = buff_frames[1:]
+            buff_grays.append(cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY))
+            buff_grays = buff_grays[1:]
     else:
+        # main is video, but get camera on secondary
+        ret, current_frame = vid.read()
+        retv, secon_frame = cam.read()
+        if not ret:
+            print("restarting video")
+            vid.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            continue
+        elif not retv:
+            print("restarting cam")
+            cam.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            continue
+        else:
+            # update buffers
+            buff_frames.append(current_frame)
+            buff_frames = buff_frames[1:]
+            buff_grays.append(cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY))
+            buff_grays = buff_grays[1:]
+            # also updaye secon buffers
+            secon_frames.append(secon_frame)
+            secon_frames = secon_frames[1:]
+            secon_grays.append(cv2.cvtColor(secon_frame, cv2.COLOR_BGR2GRAY))
+            secon_grays = secon_grays[1:]
+            # end charging buffers 
+        # end if mode==0
+    
+    #create draw with PAAST
+    draw_frame = buff_frames[-1].copy()
+    # delta bt current & past frames, threshold, mask
+    delta = cv2.absdiff(buff_grays[-1], ref_gray)
+    ret, delta_thresh = cv2.threshold(delta, tresh_detect, 255, 0)
+    # apply delta_mask to drawing (1-channel)
+    delta_mask = cv2.bitwise_and(delta_thresh, delta_thresh, mask=mask)
+    draw_frame[...,2] = cv2.add(draw_frame[...,2], delta_mask)
+    # proportion of image that changes # ................... #CHANGE~!
+    sz_of_frame = delta_thresh.size
+    sz_of_change = cv2.countNonZero(delta_thresh)
+    ratio_of_change = sz_of_change/sz_of_frame
+    #print ("{} / {} = {}".format(sz_of_change, sz_of_frame, ratio_of_change))
+    if sz_of_change > 1000:
+        t0 = time.time()
+        vl = math.floor(ratio_of_change*10)
+        spidr.update_veloc(vl)
 
-        # update buffers
-        buff_frames.append(current_frame)
-        buff_frames = buff_frames[1:]
-        buff_grays.append(cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY))
-        buff_grays = buff_grays[1:]
+    else:
+        t1 = time.time()
+        if t1-t0 > t_stop:
+            mode = 0
+            spidr.update_state(mode)
+            print("goto [0]")
+            continue
 
-        """
-        from here, 
-        t_0 frame -> buff_frames[0]     current
-        t_-1 frame -> buff_frames[1]    past
-        t_-2 frame -> buff_frames[2]    past past
-        
-        """
-
-        #create draw with PAAST
-        draw_frame = buff_frames[-1].copy()
-
-        """
-        # continue normally
-        draw_frame = current_frame.copy()
-        # convert to gray
-        current_frame_gray = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
-        """
-
+    if mode==0:
+        #analyse secon stream
+        proces_frame = secon_frames[-1].copy()
         # delta bt current & past frames, threshold, mask
-        delta = cv2.absdiff(buff_grays[-1], ref_gray)
-        # delta = cv2.absdiff(buff_grays[-1], buff_grays[-2])
-        ret, delta_thresh = cv2.threshold(delta, tresh_detect, 255, 0)
-        delta_mask = cv2.bitwise_and(delta_thresh, delta_thresh, mask=mask)
-        
-        # apply delta_mask to drawing
-        #mc = draw_frame
-        draw_frame[...,2] = cv2.add(draw_frame[...,2], delta_mask)
-
-        # proportion of image that changes
-        sz_of_frame = delta_thresh.size
-        sz_of_change = cv2.countNonZero(delta_thresh)
-        ratio_of_change = sz_of_change/sz_of_frame
-        
-        # spider tracker 
-        spidr.update()
-
-        # if enough change update previous_frame
-        if sz_of_change > 1000:
-            #print ("{} / {} = {}".format(sz_of_change, sz_of_frame, ratio_of_change))
-            
-            # update the mask!
-            #mask = np.zeros_like(buff_grays[-1])
-            
-            #contour detection
-            trackable_blur = cv2.GaussianBlur(buff_grays[-2], (5,5), 0)
-            trackable_blur = cv2.convertScaleAbs(trackable_blur, alpha=alpha, beta=beta)
-            ret, trackable_cthresh = cv2.threshold(trackable_blur, thesh_track, 255, 1)
-            contours, hierarchy = cv2.findContours(trackable_cthresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)     # -mode 1, detection on current image 
-            #contours, hierarchy = cv2.findContours(delta_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)    # -mode2, detection on difference
-            contours = sorted(contours, key=cv2.contourArea, reverse=True)
-            
-            rects = []
-            for k,c in enumerate(contours[:100]):
-                rect = cv2.boundingRect(c)
-                x, y, w, h = rect
-                rects.append(rect)
-                #-for interesrting effect draw on current frame directly
-                #current_frame = cv2.rectangle(current_frame, (x, y), (x+w, y+h), (0, 255, 0), 1)
-
-                # (b) draw only lines
-                draw_frame = cv2.line(draw_frame, (x, y+h), (x+w, y+h), colors[1], 1)
-                draw_frame = cv2.line(draw_frame, (x+2, y+h-2), (x+w+2, y+h-2), colors[2], 1)
-                draw_frame = cv2.line(draw_frame, (x+1, y+h-1), (x+w+1, y+h-1), colors[0], 1)
-
-                draw_frame = cv2.line(draw_frame, (x, y+h-10), (x, y+h), colors[1], 1)
-                draw_frame = cv2.line(draw_frame, (x+w, y+h-10), (x+w, y+h), colors[1], 1)
-                draw_frame = cv2.line(draw_frame, (x+1, y+h-11), (x+1, y+h-1), colors[2], 1)
-                draw_frame = cv2.line(draw_frame, (x+w+1, y+h-11), (x+w+1, y+h-1), colors[1], 1)
-
-                # new mask thing
-                mask = cv2.rectangle(mask, (x, y), (x+w, y+h), (255), -1)
-            # spider
-            spidr.charge_list(rects)
-            
-            # here update the previous
-            ref_frame = buff_frames[-1].copy()
-            ref_gray = buff_grays[-1].copy()
-        
-        # spider
-        spidr.draw(draw_frame)
+        delta_proc = cv2.absdiff(secon_grays[-1], ref_secon_gray)
+        retv, delta_thresh_proc = cv2.threshold(delta_proc, tresh_detect, 255, 0)
+        # proportion of image that changes # ................... #CHANGE~!
+        sz_of_frame_proc = delta_thresh_proc.size
+        sz_of_change_proc = cv2.countNonZero(delta_thresh_proc)
+        ratio_of_change_proc = sz_of_change_proc/sz_of_frame_proc
+        # this determines when changin back to mode 1
+        if sz_of_change_proc > 1000:
+            auxcon += 1
+            if auxcon > 10:
+                mode = 1
+                auxcon = 0
+                spidr.update_state(mode)
+                print("goto [1]")
+            #continue
 
 
-        cv2.imshow("D.E.S.M.I.N.A.R.", draw_frame) 
-        #cv2.imshow("Frame-Differential", draw_frame) 
+    # spider tracker 
+    spidr.update()
 
-        # break with key 'q'
-        if cv2.waitKey(24) & 0xFF == ord('q'): 
-            break
-        #if cv2.waitKey(24) & 0xFF == ord('s'): 
-        #    # Filename 
-        #    fn = basename + '_{:02d}.png'.format(fn_index)
-        #    print("saving frame")
-        #    cv2.imwrite(fn, draw_frame) 
-        #    fn_index += 1
+
+
+    #contour detection
+    trackable_blur = cv2.GaussianBlur(buff_grays[-2], (5,5), 0)
+    trackable_blur = cv2.convertScaleAbs(trackable_blur, alpha=alpha, beta=beta)
+    ret, trackable_cthresh = cv2.threshold(trackable_blur, thesh_track, 255, 1)
+    contours, hierarchy = cv2.findContours(trackable_cthresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)     # -mode 1, detection on current image 
+    #contours, hierarchy = cv2.findContours(delta_thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)    # -mode2, detection on difference
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    
+    rects = []
+    for k,c in enumerate(contours[:100]):
+        rect = cv2.boundingRect(c)
+        x, y, w, h = rect
+        rects.append(rect)
+        #-for interesrting effect draw on current frame directly
+        #current_frame = cv2.rectangle(current_frame, (x, y), (x+w, y+h), (0, 255, 0), 1)
+
+        # (b) draw only lines
+        draw_frame = cv2.line(draw_frame, (x, y+h), (x+w, y+h), colors[1], 1)
+        draw_frame = cv2.line(draw_frame, (x+2, y+h-2), (x+w+2, y+h-2), colors[2], 1)
+        draw_frame = cv2.line(draw_frame, (x+1, y+h-1), (x+w+1, y+h-1), colors[0], 1)
+        #
+        draw_frame = cv2.line(draw_frame, (x, y+h-10), (x, y+h), colors[1], 1)
+        draw_frame = cv2.line(draw_frame, (x+w, y+h-10), (x+w, y+h), colors[1], 1)
+        draw_frame = cv2.line(draw_frame, (x+1, y+h-11), (x+1, y+h-1), colors[2], 1)
+        draw_frame = cv2.line(draw_frame, (x+w+1, y+h-11), (x+w+1, y+h-1), colors[1], 1)
+
+        # new mask thing
+        mask = cv2.rectangle(mask, (x, y), (x+w, y+h), (255), -1)
+    # spider
+    spidr.charge_list(rects)
+    
+    # here update the previous
+    ref_frame = buff_frames[-1].copy()
+    ref_gray = buff_grays[-1].copy()
+    if mode==0:
+        ref_secon_frame = secon_frames[-1].copy()
+        ref_secon_gray = secon_grays[-1].copy()
+
+    #in all frames
+    # spider
+    spidr.draw(draw_frame)
+
+    # THE SHOW
+    #if mode==1:
+    cv2.imshow("D.E.S.M.I.N.A.R.", draw_frame) 
+    #cv2.imshow("Frame-Differential", draw_frame) 
+    #elif mode==0:
+    #    cv2.imshow("D.E.S.M.I.N.A.R.", current_vframe) 
+
+    # break with key 'q'
+    if cv2.waitKey(24) & 0xFF == ord('q'): 
+        break
+    #if cv2.waitKey(24) & 0xFF == ord('s'): 
+    #    # Filename 
+    #    fn = basename + '_{:02d}.png'.format(fn_index)
+    #    print("saving frame")
+    #    cv2.imwrite(fn, draw_frame) 
+    #    fn_index += 1
 
 # frees up resources and closes all windows 
-cap.release() 
+cam.release() 
 cv2.destroyAllWindows() 
