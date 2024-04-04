@@ -208,7 +208,7 @@ t_stop = 10
 # load stream from file
 
 #cam = cv2.VideoCapture("D:/SK/PY/desminar/TLTL/tltl_process.mp4")
-vid = cv2.VideoCapture("D:/SK/PY/desminar/more_cartels/TLATELOLCO_/v1.mov")
+vid = cv2.VideoCapture("/Users/microhm/Desktop/01_Proyectos/Tania_Candiani/desminar-2/TLATELOLCO_/v4.mov")
 #cam = cv2.VideoCapture("C:/Users/tania/Documents/desminar/FRAGMENTOS DIC/NINJAV_S001_S001_T005_2x4x.mp4")
 # stream from webcam or capture device
 cam = cv2.VideoCapture(1, cv2.CAP_DSHOW) # this is the magic!
